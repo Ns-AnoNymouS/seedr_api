@@ -1,4 +1,4 @@
-# Coding Style Guide — `seedr-api`
+# Coding Style Guide — `seedr-api-client`
 
 A reference for every contributor. These rules are **enforced automatically** where possible (ruff, mypy) or are **conventions** (naming, docstrings, git).
 

@@ -1,9 +1,9 @@
-# seedr-api
+# seedr-api-client
 
-[![PyPI](https://img.shields.io/pypi/v/seedr-api)](https://pypi.org/project/seedr-api/)
-[![Python](https://img.shields.io/pypi/pyversions/seedr-api)](https://pypi.org/project/seedr-api/)
+[![PyPI](https://img.shields.io/pypi/v/seedr-api-client)](https://pypi.org/project/seedr-api-client/)
+[![Python](https://img.shields.io/pypi/pyversions/seedr-api-client)](https://pypi.org/project/seedr-api-client/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI](https://github.com/naveen/seedr-api/actions/workflows/ci.yml/badge.svg)](https://github.com/naveen/seedr-api/actions)
+[![CI](https://github.com/Ns-AnoNymouS/seedr-api-client/actions/workflows/ci.yml/badge.svg)](https://github.com/Ns-AnoNymouS/seedr-api-client/actions)
 
 An **async** Python client library for the [Seedr](https://www.seedr.cc) API (v0.1).
 
@@ -19,7 +19,7 @@ An **async** Python client library for the [Seedr](https://www.seedr.cc) API (v0
 ## Installation
 
 ```bash
-pip install seedr-api
+pip install seedr-api-client
 ```
 
 ## Quick Start

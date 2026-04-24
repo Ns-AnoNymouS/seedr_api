@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-04-24
 
 ### Added
-- Initial release of `seedr-api`.
+- Initial release of `seedr-api-client`.
 - Async client (`SeedrClient`) built on `aiohttp`.
 - Full coverage of Seedr API v0.1: OAuth, Filesystem, Tasks, Downloads,
   Presentations, Subtitles, Search, and User resources.
