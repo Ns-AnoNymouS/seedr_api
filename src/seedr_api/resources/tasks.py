@@ -26,7 +26,7 @@ class TasksResource(BaseResource):
             All current tasks.
         """
         data: Any = await self._http.get("/tasks")
-        tasks: list[Any] = data if isinstance(data, list) else data.get("torrents", [])
+        tasks: list[Any] = data if isinstance(data, list) else data.get("tasks", [])
         return [Task.model_validate(t) for t in tasks]
 
     async def get(self, task_id: int) -> Task:
