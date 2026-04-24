@@ -167,6 +167,26 @@ class AsyncHTTPClient:
                 return {}
             return await resp.json(content_type=None)
 
+    async def put(
+        self,
+        path: str,
+        *,
+        data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Perform a PUT request and return the parsed JSON body."""
+        session = self._get_session()
+        async with session.put(
+            self._url(path),
+            headers=self._build_headers(),
+            json=data,
+            params=params,
+        ) as resp:
+            await self._raise_for_status(resp)
+            if resp.status == 204:
+                return {}
+            return await resp.json(content_type=None)
+
     async def delete(
         self,
         path: str,

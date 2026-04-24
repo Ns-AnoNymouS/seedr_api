@@ -26,7 +26,7 @@ class TasksResource(BaseResource):
             All current tasks.
         """
         data: Any = await self._http.get("/tasks")
-        tasks: list[Any] = data if isinstance(data, list) else data.get("tasks", [])
+        tasks: list[Any] = data if isinstance(data, list) else data.get("torrents", [])
         return [Task.model_validate(t) for t in tasks]
 
     async def get(self, task_id: int) -> Task:
@@ -164,3 +164,73 @@ class TasksResource(BaseResource):
             The numeric task ID.
         """
         await self._http.delete(f"/tasks/{task_id}")
+
+    async def get_contents(self, task_id: int) -> dict[str, Any]:
+        """Return the file/folder contents of a completed task.
+
+        Required scope: ``tasks.read``
+
+        Parameters
+        ----------
+        task_id:
+            The numeric task ID.
+
+        Returns
+        -------
+        dict
+            Raw contents response from the API.
+        """
+        data: Any = await self._http.get(f"/tasks/{task_id}/contents")
+        return data if isinstance(data, dict) else {"contents": data}
+
+    async def get_progress_url(self, task_id: int) -> str | None:
+        """Return the SSE progress URL for an active task.
+
+        Required scope: ``tasks.read``
+
+        Parameters
+        ----------
+        task_id:
+            The numeric task ID.
+
+        Returns
+        -------
+        str or None
+            The SSE progress URL, or ``None`` if unavailable.
+        """
+        data: Any = await self._http.get(f"/tasks/{task_id}/progress")
+        if isinstance(data, dict):
+            return data.get("progress_url") or data.get("url")
+        return str(data) if data else None
+
+    async def get_unwanted(self, task_id: int) -> dict[str, Any]:
+        """Return the unwanted-files bitmap for a task.
+
+        Required scope: ``tasks.read``
+
+        Parameters
+        ----------
+        task_id:
+            The numeric task ID.
+
+        Returns
+        -------
+        dict
+            Unwanted file selection data.
+        """
+        data: Any = await self._http.get(f"/tasks/{task_id}/unwanted")
+        return data if isinstance(data, dict) else {"data": data}
+
+    async def set_unwanted(self, task_id: int, bitmap: str) -> None:
+        """Set the unwanted-files bitmap for a task.
+
+        Required scope: ``tasks.write``
+
+        Parameters
+        ----------
+        task_id:
+            The numeric task ID.
+        bitmap:
+            Bitmask string identifying which files to exclude.
+        """
+        await self._http.post(f"/tasks/{task_id}/unwanted", data={"bitmap": bitmap})

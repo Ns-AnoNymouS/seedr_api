@@ -26,6 +26,7 @@ class DeviceCode(BaseModel):
     device_code: str
     user_code: str
     verification_uri: str
+    verification_uri_complete: str | None = None
     expires_in: int
     interval: int = Field(default=5, description="Poll interval in seconds")
 

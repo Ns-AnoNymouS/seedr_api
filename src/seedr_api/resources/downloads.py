@@ -107,3 +107,27 @@ class DownloadsResource(BaseResource):
             Raw ZIP archive content.
         """
         return await self._http.get_bytes(f"/download/archive/{uniq}")
+
+    async def init_archive(self, uuid: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+        """Initialise a ZIP archive download for a set of files/folders.
+
+        Required scope: ``archives.manage``
+
+        Parameters
+        ----------
+        uuid:
+            A client-generated UUID that will identify this archive.
+        items:
+            List of item descriptors, e.g.
+            ``[{"type": "file", "id": 123}, {"type": "folder", "id": 456}]``.
+
+        Returns
+        -------
+        dict
+            Archive initialisation response from the API.
+        """
+        data: Any = await self._http.put(
+            f"/download/archive/init/{uuid}",
+            data={"items": items},
+        )
+        return data if isinstance(data, dict) else {"result": data}
