@@ -260,8 +260,8 @@ class AuthResource(BaseResource):
         self,
         *,
         client_id: str,
-        client_secret: str,
         refresh_token: str,
+        client_secret: str | None = None,
     ) -> TokenResponse:
         """Use a refresh token to obtain a new access token.
 
@@ -269,25 +269,24 @@ class AuthResource(BaseResource):
         ----------
         client_id:
             OAuth client ID.
-        client_secret:
-            OAuth client secret.
         refresh_token:
             The refresh token to redeem.
+        client_secret:
+            OAuth client secret (required for confidential clients; omit for public clients).
 
         Returns
         -------
         TokenResponse
             New access and refresh tokens.
         """
-        data: Any = await self._http.post(
-            "/oauth/token",
-            data={
-                "grant_type": "refresh_token",
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "refresh_token": refresh_token,
-            },
-        )
+        payload: dict[str, str] = {
+            "grant_type": "refresh_token",
+            "client_id": client_id,
+            "refresh_token": refresh_token,
+        }
+        if client_secret is not None:
+            payload["client_secret"] = client_secret
+        data: Any = await self._http.post("/oauth/token", data=payload)
         return TokenResponse.model_validate(data)
 
     async def request_device_code(
