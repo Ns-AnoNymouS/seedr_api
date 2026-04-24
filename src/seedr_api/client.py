@@ -119,6 +119,29 @@ class SeedrClient:
         return cls(http)
 
     @classmethod
+    def anonymous(cls, *, timeout: float = 60.0) -> SeedrClient:
+        """Create an unauthenticated client for auth-only operations.
+
+        Use this to call :attr:`auth` methods (device code flow, token
+        refresh, etc.) before you have an access token.
+
+        Parameters
+        ----------
+        timeout:
+            Total request timeout in seconds. Defaults to 60.
+
+        Returns
+        -------
+        SeedrClient
+            Unauthenticated client instance.
+        """
+        http = AsyncHTTPClient(
+            _API_BASE,
+            timeout=aiohttp.ClientTimeout(total=timeout),
+        )
+        return cls(http)
+
+    @classmethod
     async def login_with_client_credentials(
         cls,
         client_id: str,
