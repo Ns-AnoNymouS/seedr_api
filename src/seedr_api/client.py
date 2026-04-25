@@ -13,11 +13,17 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
+
 import aiohttp
 
 from seedr_api._http import AsyncHTTPClient
 from seedr_api.exceptions import SeedrError
 from seedr_api.resources.auth import AuthResource
+
+if TYPE_CHECKING:
+    from seedr_api.models.auth import TokenResponse
 from seedr_api.resources.downloads import DownloadsResource
 from seedr_api.resources.filesystem import FilesystemResource
 from seedr_api.resources.presentations import PresentationsResource
@@ -64,14 +70,30 @@ class SeedrClient:
         cls,
         access_token: str,
         *,
+        refresh_token: str | None = None,
+        client_id: str | None = None,
+        on_token_refresh: Callable[[TokenResponse], Awaitable[None]] | None = None,
         timeout: float = 60.0,
     ) -> SeedrClient:
         """Create a client authenticated with an OAuth 2.0 access token.
+
+        When *refresh_token* and *client_id* are supplied the client will
+        automatically exchange the refresh token for a new access token on
+        any 401 response and retry the request once, so callers never need
+        to handle token expiry themselves.
 
         Parameters
         ----------
         access_token:
             A valid Seedr OAuth access token.
+        refresh_token:
+            OAuth refresh token. Required for automatic token refresh.
+        client_id:
+            OAuth client ID. Required for automatic token refresh.
+        on_token_refresh:
+            Optional async callback called after a successful refresh with
+            the new :class:`~seedr_api.models.auth.TokenResponse`. Use this
+            to persist the updated tokens.
         timeout:
             Total request timeout in seconds. Defaults to 60.
 
@@ -80,9 +102,38 @@ class SeedrClient:
         SeedrClient
             Configured client instance.
         """
+        on_unauthorized = None
+
+        if refresh_token and client_id:
+            # Use a list so the closure can update the value across calls.
+            _refresh_token: list[str] = [refresh_token]
+
+            async def _on_unauthorized() -> str:
+                from seedr_api.models.auth import TokenResponse as TR  # avoid circular import
+
+                temp_http = AsyncHTTPClient(
+                    _API_BASE, timeout=aiohttp.ClientTimeout(total=30)
+                )
+                temp_client = cls(temp_http)
+                try:
+                    token_resp: TR = await temp_client.auth.refresh_token(
+                        client_id=client_id,
+                        refresh_token=_refresh_token[0],
+                    )
+                finally:
+                    await temp_http.close()
+
+                _refresh_token[0] = token_resp.refresh_token or _refresh_token[0]
+                if on_token_refresh is not None:
+                    await on_token_refresh(token_resp)
+                return token_resp.access_token
+
+            on_unauthorized = _on_unauthorized
+
         http = AsyncHTTPClient(
             _API_BASE,
             access_token=access_token,
+            on_unauthorized=on_unauthorized,
             timeout=aiohttp.ClientTimeout(total=timeout),
         )
         return cls(http)
@@ -190,6 +241,11 @@ class SeedrClient:
     # ------------------------------------------------------------------
     # Token management
     # ------------------------------------------------------------------
+
+    @property
+    def access_token(self) -> str:
+        """The current bearer token (may have been updated after an auto-refresh)."""
+        return self._http._access_token or ""
 
     def update_token(self, access_token: str) -> None:
         """Replace the bearer token (e.g. after a token refresh).

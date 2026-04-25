@@ -4,13 +4,14 @@ Handles:
 - Session lifecycle (creation, teardown)
 - BasicAuth and Bearer token injection
 - Centralised HTTP error → exception mapping
+- Automatic one-shot token refresh on 401 (when on_unauthorized is provided)
 - JSON and binary (streaming) response helpers
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
 
 import aiohttp
@@ -40,6 +41,11 @@ class AsyncHTTPClient:
         ``(email, password)`` tuple for HTTP Basic Auth.
     timeout:
         Request timeout. Defaults to 60 seconds.
+    on_unauthorized:
+        Async callable invoked on a 401 response. It should refresh the token
+        and return the new access token as a string. The request is then
+        retried once with the updated token. If omitted, 401 raises
+        :class:`~seedr_api.exceptions.AuthenticationError` immediately.
     """
 
     def __init__(
@@ -49,12 +55,14 @@ class AsyncHTTPClient:
         access_token: str | None = None,
         basic_auth: tuple[str, str] | None = None,
         timeout: aiohttp.ClientTimeout = _DEFAULT_TIMEOUT,
+        on_unauthorized: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._access_token = access_token
         self._basic_auth = basic_auth
         self._timeout = timeout
         self._session: aiohttp.ClientSession | None = None
+        self._on_unauthorized = on_unauthorized
 
     # ------------------------------------------------------------------
     # Session lifecycle
@@ -75,7 +83,6 @@ class AsyncHTTPClient:
         """Close the underlying :class:`aiohttp.ClientSession`."""
         if self._session and not self._session.closed:
             await self._session.close()
-            # Give the connector time to close cleanly.
             await asyncio.sleep(0)
 
     # ------------------------------------------------------------------
@@ -128,20 +135,32 @@ class AsyncHTTPClient:
             raise ServerError(message, status_code=status)
         raise APIError(message, status_code=status)
 
+    async def _request(self, method: str, path: str, **session_kwargs: Any) -> Any:
+        """Execute an HTTP request, retrying once after a token refresh on 401."""
+        session = self._get_session()
+        for attempt in range(2):
+            async with session.request(
+                method,
+                self._url(path),
+                headers=self._build_headers(),
+                **session_kwargs,
+            ) as resp:
+                if resp.status == 401 and attempt == 0 and self._on_unauthorized is not None:
+                    new_token = await self._on_unauthorized()
+                    self._access_token = new_token
+                    continue
+                await self._raise_for_status(resp)
+                if resp.status == 204:
+                    return {}
+                return await resp.json(content_type=None)
+
     # ------------------------------------------------------------------
     # Public request methods
     # ------------------------------------------------------------------
 
     async def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
         """Perform a GET request and return the parsed JSON body."""
-        session = self._get_session()
-        async with session.get(
-            self._url(path),
-            headers=self._build_headers(),
-            params=params,
-        ) as resp:
-            await self._raise_for_status(resp)
-            return await resp.json(content_type=None)
+        return await self._request("GET", path, params=params)
 
     async def post(
         self,
@@ -152,20 +171,10 @@ class AsyncHTTPClient:
         params: dict[str, Any] | None = None,
     ) -> Any:
         """Perform a POST request and return the parsed JSON body."""
-        session = self._get_session()
         body: aiohttp.FormData | dict[str, Any] | None = (
             form_data if form_data is not None else data
         )
-        async with session.post(
-            self._url(path),
-            headers=self._build_headers(),
-            data=body,
-            params=params,
-        ) as resp:
-            await self._raise_for_status(resp)
-            if resp.status == 204:
-                return {}
-            return await resp.json(content_type=None)
+        return await self._request("POST", path, data=body, params=params)
 
     async def put(
         self,
@@ -175,17 +184,7 @@ class AsyncHTTPClient:
         params: dict[str, Any] | None = None,
     ) -> Any:
         """Perform a PUT request and return the parsed JSON body."""
-        session = self._get_session()
-        async with session.put(
-            self._url(path),
-            headers=self._build_headers(),
-            json=data,
-            params=params,
-        ) as resp:
-            await self._raise_for_status(resp)
-            if resp.status == 204:
-                return {}
-            return await resp.json(content_type=None)
+        return await self._request("PUT", path, json=data, params=params)
 
     async def delete(
         self,
@@ -195,17 +194,7 @@ class AsyncHTTPClient:
         params: dict[str, Any] | None = None,
     ) -> Any:
         """Perform a DELETE request and return the parsed JSON body."""
-        session = self._get_session()
-        async with session.delete(
-            self._url(path),
-            headers=self._build_headers(),
-            data=data,
-            params=params,
-        ) as resp:
-            await self._raise_for_status(resp)
-            if resp.status == 204:
-                return {}
-            return await resp.json(content_type=None)
+        return await self._request("DELETE", path, data=data, params=params)
 
     async def get_bytes(
         self, path: str, *, params: dict[str, Any] | None = None

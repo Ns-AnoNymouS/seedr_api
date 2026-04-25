@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from seedr_api.models.filesystem import (
@@ -107,9 +108,51 @@ class FilesystemResource(BaseResource):
         """
         payload: dict[str, Any] = {"name": name}
         if parent_id is not None:
-            payload["parent_id"] = parent_id
+            payload["parent"] = parent_id
         data: Any = await self._http.post("/fs/folder", data=payload)
         return FolderInfo.model_validate(data)
+
+    async def rename_folder(self, folder_id: int, new_name: str) -> FolderInfo:
+        """Rename an empty folder.
+
+        The Seedr public API does not support moving items via Bearer-token auth,
+        so rename is only possible for empty folders: creates a replacement with
+        the new name then deletes the original.
+
+        Required scope: ``files.write``
+
+        Parameters
+        ----------
+        folder_id:
+            The numeric ID of the folder to rename.
+        new_name:
+            New display name for the folder.
+
+        Returns
+        -------
+        FolderInfo
+            The newly created folder (carries the new ID).
+
+        Raises
+        ------
+        ValueError
+            If the folder is non-empty (rename would lose its contents).
+        """
+        from seedr_api.exceptions import SeedrError
+
+        folder = await self.get_folder(folder_id)
+        parent_id = folder.parent if folder.parent and folder.parent != -1 else None
+
+        contents = await self.list_folder_contents(folder_id)
+        if contents.folders or contents.files:
+            raise SeedrError(
+                "Rename is only supported for empty folders via the Seedr OAuth API."
+            )
+
+        new_folder = await self.create_folder(new_name, parent_id=parent_id)
+        await self.delete_folder(folder_id)
+        return new_folder
+
 
     async def delete_folder(self, folder_id: int) -> None:
         """Delete a folder and all its contents.
@@ -123,7 +166,7 @@ class FilesystemResource(BaseResource):
         """
         await self._http.delete(
             f"/fs/folder/{folder_id}",
-            data={"delete_arr": f"[{folder_id}]"},
+            data={"delete_arr": json.dumps([{"id": folder_id, "type": "folder"}])},
         )
 
     # ------------------------------------------------------------------
@@ -160,7 +203,7 @@ class FilesystemResource(BaseResource):
         """
         await self._http.delete(
             f"/fs/file/{file_id}",
-            data={"delete_arr": f"[{file_id}]"},
+            data={"delete_arr": json.dumps([{"id": file_id, "type": "file"}])},
         )
 
     # ------------------------------------------------------------------
@@ -221,6 +264,7 @@ class FilesystemResource(BaseResource):
     async def batch_move(
         self,
         item_ids: list[int],
+        source_folder_id: int,
         destination_folder_id: int,
     ) -> BatchResult:
         """Move multiple files/folders to a destination folder.
@@ -231,6 +275,8 @@ class FilesystemResource(BaseResource):
         ----------
         item_ids:
             List of file or folder IDs to move.
+        source_folder_id:
+            Current parent folder ID of the items.
         destination_folder_id:
             Target folder ID.
 
@@ -241,7 +287,12 @@ class FilesystemResource(BaseResource):
         """
         data: Any = await self._http.post(
             "/fs/batch/move",
-            data={"ids": item_ids, "destination": destination_folder_id},
+            data={
+                "copy_arr": json.dumps([]),
+                "move_arr": json.dumps(item_ids),
+                "from": source_folder_id,
+                "to": destination_folder_id,
+            },
         )
         return BatchResult.model_validate(data)
 
@@ -260,8 +311,9 @@ class FilesystemResource(BaseResource):
         BatchResult
             Success status and any errors.
         """
+        tagged = [{"id": i, "type": "folder"} for i in item_ids]
         data: Any = await self._http.post(
             "/fs/batch/delete",
-            data={"ids": item_ids},
+            data={"delete_arr": json.dumps(tagged)},
         )
         return BatchResult.model_validate(data)
